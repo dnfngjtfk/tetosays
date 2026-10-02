@@ -4,7 +4,7 @@
 
 ## ~~Установка~~
 
-~~`yay -S tetosays`~~ `paru -S tetosays` — пока нет на AUR
+~~`yay -S tetosays`~~ `paru -S tetosays` — пока нет на AUR, мейби позже залью. У меня акк не зареган. сука New account registration is temporarily closed
 
 Из исходников:
 
