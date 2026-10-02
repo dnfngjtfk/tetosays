@@ -2,9 +2,7 @@
 
 Сидел искал пакеты, увидел mikusays - круто, мне надо Тето. Решил сделать Cowsay-клон с Kasane Teto ASCII-артами и облачком речи. Rust, все арты вшиты в бинарь.
 
-## Установка
-<img width="595" height="403" alt="изображение" src="https://github.com/user-attachments/assets/acbfa5e4-cdc5-4b66-9d33-39f8acec4a6e" />
-
+## ~~Установка~~
 ~~yay~~ paru -S ~~tetosays~~ — пока нет на AUR, мейби позже залью. У меня акк не зареган. сука New account registration is temporarily closed. Когда-нибудь откроют регистрацию. Хочу себе пакет крутой типа буду понимаете да.
 
 Из исходников:
