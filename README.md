@@ -2,11 +2,11 @@
 
 Сидел искал пакеты, увидел mikusays — очень круто, но мне надо Тето. Решил сделать сам за вечер. Cowsay-клон с Kasane Teto ASCII-артами и облачком речи. Rust, все арты вшиты в бинарь.
 
-## Установка
+## ~~Установка~~
 
-~~`yay -S tetosays`~~ — пока нет на AUR
+`yay -S tetosays` — пока нет на AUR
 
-~~`cargo install --git https://github.com/dnfngjtfk/tetosays`~~ — пока только из исходников:
+Из исходников:
 
 ```sh
 git clone https://github.com/dnfngjtfk/tetosays
