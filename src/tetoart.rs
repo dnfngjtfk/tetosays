@@ -368,7 +368,7 @@ const STYLE_7: &str = r#"
 ⠀⠀⠀⠀⠀⠀⠀⠀⣤⠾⠒⠒⢳⣾⠀⠉⠂⡏⠀⠀⣾⡇⢸⣿⠻⢿⠁⠀⡇⠀⠀⠀⣿⢠⡇⣿⠶⠒⠛⠉⠉⠉⠙⢚⡆⠀⠀⠀
 "#;
 pub fn art_count() -> usize {
-    BUILTIN_COUNT + load_user_arts().len()
+    BUILTIN_COUNT + cached_user_arts().len()
 }
 
 pub const BUILTIN_COUNT: usize = 8;
@@ -397,11 +397,23 @@ pub fn pick_from_pool(pool: &[usize]) -> Option<usize> {
     if pool.is_empty() {
         return None;
     }
+    // subsec_nanos alone repeats every second and has poor spread, so mix in
+    // pid + a per-call counter and run splitmix64 for uniform selection.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos() as usize)
+        .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
-    Some(pool[nanos % pool.len()])
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id() as u64;
+    let mut z = nanos
+        .wrapping_add(count.wrapping_mul(0x9E3779B97F4A7C15))
+        .wrapping_add((pid << 32) | 0xD1B54A32);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    let mixed = z ^ (z >> 31);
+    Some(pool[mixed as usize % pool.len()])
 }
 
 pub fn random_pool_index() -> usize {
@@ -409,16 +421,19 @@ pub fn random_pool_index() -> usize {
 }
 
 pub fn get_teto_art(style: Option<usize>) -> Vec<String> {
+    let total = art_count();
     let index = match style {
         Some(i) => {
-            debug_assert!(i < art_count());
-            i.min(art_count().saturating_sub(1))
+            if i >= total {
+                return normalize_art(STYLE_0);
+            }
+            i
         }
         None => random_pool_index(),
     };
 
     if index >= BUILTIN_COUNT {
-        if let Some((_, art)) = load_user_arts().get(index - BUILTIN_COUNT) {
+        if let Some((_, art)) = cached_user_arts().get(index - BUILTIN_COUNT) {
             return art.clone();
         }
         return normalize_art(STYLE_0);
@@ -444,8 +459,11 @@ fn normalize_art(raw: &str) -> Vec<String> {
         .lines()
         .map(|l| l.trim_end_matches(is_blank).to_string())
         .collect();
-    if art.first().is_some_and(|l| l.is_empty()) {
+    while art.first().is_some_and(|l| l.is_empty()) {
         art.remove(0);
+    }
+    while art.last().is_some_and(|l| l.is_empty()) {
+        art.pop();
     }
     let indent = art
         .iter()
@@ -504,14 +522,16 @@ pub fn load_user_arts_from(dir: &std::path::Path) -> Vec<(String, Vec<String>)> 
         .collect()
 }
 
-fn load_user_arts() -> Vec<(String, Vec<String>)> {
-    load_user_arts_from(&user_arts_dir())
+fn cached_user_arts() -> &'static Vec<(String, Vec<String>)> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Vec<(String, Vec<String>)>> = OnceLock::new();
+    CACHE.get_or_init(|| load_user_arts_from(&user_arts_dir()))
 }
 
 pub fn user_art_name(index: usize) -> Option<String> {
     index
         .checked_sub(BUILTIN_COUNT)
-        .and_then(|i| load_user_arts().get(i).map(|(name, _)| name.clone()))
+        .and_then(|i| cached_user_arts().get(i).map(|(name, _)| name.clone()))
 }
 
 #[cfg(test)]

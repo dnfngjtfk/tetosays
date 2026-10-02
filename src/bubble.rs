@@ -78,17 +78,45 @@ fn split_word_by_width(word: &str, max_width: usize) -> Vec<String> {
 }
 
 pub fn get_speech_bubble_lines(text: &str, max_width: usize) -> Vec<String> {
+    // max_width is the total outer width including borders.
     let effective_max = max_width.clamp(10, 200);
-    let lower = MIN_BUBBLE_WIDTH.min(effective_max);
-    let temp_lines = wrap_text(text, effective_max.saturating_sub(4));
+    let inner_max = effective_max.saturating_sub(2).max(6);
+    let lower = MIN_BUBBLE_WIDTH.min(inner_max);
+
+    fn wrap_multiline(text: &str, width: usize) -> Vec<String> {
+        let mut out = Vec::new();
+        // "".lines() yields nothing, which correctly maps to an empty bubble.
+        for paragraph in text.lines() {
+            if paragraph.trim().is_empty() {
+                out.push(String::new());
+            } else {
+                out.extend(wrap_text(paragraph, width));
+            }
+        }
+        // Single-line text without '\n' (the common case): lines() yields
+        // exactly one item, but handle text without any newline uniformly.
+        if out.is_empty() && !text.is_empty() {
+            out.extend(wrap_text(text, width));
+        }
+        // Drop leading/trailing blank separators, keep interior ones.
+        while out.first().is_some_and(|l| l.is_empty()) && out.len() > 1 {
+            out.remove(0);
+        }
+        while out.last().is_some_and(|l| l.is_empty()) && out.len() > 1 {
+            out.pop();
+        }
+        out
+    }
+
+    let temp_lines = wrap_multiline(text, inner_max.saturating_sub(4));
     let content_width = temp_lines
         .iter()
         .map(|line| line.width())
         .max()
         .unwrap_or(0);
-    let bubble_width = (content_width + 4).clamp(lower, effective_max);
+    let bubble_width = (content_width + 4).clamp(lower, inner_max);
 
-    let lines = wrap_text(text, bubble_width - 4);
+    let lines = wrap_multiline(text, bubble_width.saturating_sub(4));
     let mut bubble_lines = Vec::new();
 
     bubble_lines.push(format!("╭{}╮", "─".repeat(bubble_width)));
@@ -168,7 +196,32 @@ mod tests {
         let text = "Hello world this is a width test for the bubble";
         let narrow = get_speech_bubble_lines(text, 30);
         let wide = get_speech_bubble_lines(text, 60);
-        assert!(narrow[0].width() <= 30 + 2);
+        assert!(narrow[0].width() <= 30);
         assert!(wide[0].width() > narrow[0].width());
+        assert!(wide[0].width() <= 60);
+    }
+
+    #[test]
+    fn bubble_preserves_newlines() {
+        let bubble = get_speech_bubble_lines("line1\nline2\nline3", 50);
+        let joined = bubble.join("\n");
+        assert!(joined.contains("line1"));
+        assert!(joined.contains("line2"));
+        assert!(joined.contains("line3"));
+        // Each source line lands on its own bubble row.
+        let rows: Vec<&String> = bubble.iter().filter(|l| l.contains("line")).collect();
+        assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn bubble_outer_width_bounded() {
+        for w in [10usize, 20, 50, 200] {
+            let bubble = get_speech_bubble_lines("Hello world this is a test", w);
+            assert!(
+                bubble[0].width() <= w,
+                "outer width {} exceeds max {w}",
+                bubble[0].width()
+            );
+        }
     }
 }

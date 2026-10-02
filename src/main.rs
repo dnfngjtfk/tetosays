@@ -35,8 +35,8 @@ impl From<AlignArg> for Align {
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
-    /// Text in the speech bubble (or stdin pipe)
-    text: Option<String>,
+    /// Text in the speech bubble (or stdin pipe). Multiple words are joined with spaces.
+    text: Vec<String>,
 
     /// Art style by number (see --list), random from pool if omitted
     #[arg(short, long)]
@@ -54,11 +54,11 @@ struct Args {
     #[arg(long)]
     no_clear: bool,
 
-    /// Remove styles from random pool
+    /// Remove styles from random pool (comma-separated or repeated: --disable 1,2)
     #[arg(long, value_delimiter = ',')]
     disable: Vec<usize>,
 
-    /// Return styles to random pool
+    /// Return styles to random pool (comma-separated or repeated: --enable 6)
     #[arg(long, value_delimiter = ',')]
     enable: Vec<usize>,
 
@@ -73,7 +73,10 @@ fn read_stdin() -> Option<String> {
     }
     let mut buf = String::new();
     std::io::stdin().read_to_string(&mut buf).ok()?;
-    let trimmed = buf.trim().to_string();
+    // Preserve interior newlines for multiline bubbles; only strip the
+    // leading/trailing blank edges. Normalize \r\n to \n.
+    let normalized = buf.replace("\r\n", "\n");
+    let trimmed = normalized.trim().to_string();
     if trimmed.is_empty() {
         None
     } else {
@@ -84,11 +87,12 @@ fn read_stdin() -> Option<String> {
 fn main() {
     let args = Args::parse();
 
+    let total = art_count();
     for n in args.disable.iter().chain(args.enable.iter()) {
-        if *n >= art_count() {
+        if *n >= total {
             eprintln!(
                 "Error: style {n} does not exist; choose a value between 0 and {}.",
-                art_count() - 1
+                total - 1
             );
             std::process::exit(1);
         }
@@ -123,22 +127,24 @@ fn main() {
         return;
     }
 
-    let text = match args.text {
-        Some(ref t) if t == "-" => match read_stdin() {
-            Some(s) => s,
-            None => {
-                eprintln!("Error: no input on stdin.");
-                std::process::exit(1);
+    let text = {
+        let joined = args.text.join(" ");
+        let trimmed = joined.trim();
+        if trimmed.is_empty() || trimmed == "-" {
+            match read_stdin() {
+                Some(s) => s,
+                None => {
+                    if trimmed == "-" {
+                        eprintln!("Error: no input on stdin.");
+                    } else {
+                        eprintln!("Error: TEXT is required (or use --list). Try --help.");
+                    }
+                    std::process::exit(1);
+                }
             }
-        },
-        Some(t) => t,
-        None => match read_stdin() {
-            Some(s) => s,
-            None => {
-                eprintln!("Error: TEXT is required (or use --list). Try --help.");
-                std::process::exit(1);
-            }
-        },
+        } else {
+            trimmed.to_string()
+        }
     };
 
     if let Some(s) = args.style {

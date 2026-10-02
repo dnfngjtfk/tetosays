@@ -63,10 +63,17 @@ pub fn render_with_options(text: &str, style: Option<usize>, width: usize, align
         .max()
         .unwrap_or(0);
     let (term_w, term_h) = term_size();
-    let overall_left = match align {
-        Align::Center => term_w.saturating_sub(max_content_width) / 2,
-        Align::Left => 0,
-        Align::Right => term_w.saturating_sub(max_content_width),
+    let is_tty = std::io::stdout().is_terminal();
+    // Piped output has no real terminal width; centering against a fake
+    // 80-column fallback only adds noise, so align to the left edge.
+    let overall_left = if !is_tty {
+        0
+    } else {
+        match align {
+            Align::Center => term_w.saturating_sub(max_content_width) / 2,
+            Align::Left => 0,
+            Align::Right => term_w.saturating_sub(max_content_width),
+        }
     };
 
     let bubble_width = bubble.first().map(|l| l.width()).unwrap_or(0);
@@ -92,7 +99,7 @@ pub fn render_with_options(text: &str, style: Option<usize>, width: usize, align
         body.push('\n');
     }
 
-    if !std::io::stdout().is_terminal() {
+    if !is_tty {
         return body;
     }
     let content_lines = body.lines().count();
