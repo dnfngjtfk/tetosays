@@ -71,8 +71,11 @@ fn read_stdin() -> Option<String> {
     if std::io::stdin().is_terminal() {
         return None;
     }
-    let mut buf = String::new();
-    std::io::stdin().read_to_string(&mut buf).ok()?;
+    let mut bytes = Vec::new();
+    std::io::stdin().read_to_end(&mut bytes).ok()?;
+    // Use lossy conversion so non-UTF-8 input still renders
+    // instead of masquerading as "no input".
+    let buf = String::from_utf8_lossy(&bytes).into_owned();
     // Preserve interior newlines for multiline bubbles; only strip the
     // leading/trailing blank edges. Normalize \r\n to \n.
     let normalized = buf.replace("\r\n", "\n");
@@ -82,6 +85,27 @@ fn read_stdin() -> Option<String> {
     } else {
         Some(trimmed)
     }
+}
+
+fn write_stdout(s: &str) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    // println!/print! panic on EPIPE (e.g. `tetosays -l | head`);
+    // exit quietly instead so pipes like `| head` or `| less` work.
+    if let Err(e) = out.write_all(s.as_bytes()) {
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
+        eprintln!("Error writing to stdout: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn print_line(s: &str) {
+    let mut owned = String::with_capacity(s.len() + 1);
+    owned.push_str(s);
+    owned.push('\n');
+    write_stdout(&owned);
 }
 
 fn main() {
@@ -100,30 +124,31 @@ fn main() {
     let pool = effective_pool(&args.disable, &args.enable);
 
     if args.list {
-        println!("Available Teto art styles: {}", art_count());
-        println!("==========================");
+        print_line(&format!("Available Teto art styles: {}", art_count()));
+        print_line("==========================");
         for i in 0..art_count() {
             let custom = if i >= BUILTIN_COUNT {
                 user_art_name(i).map(|n| format!(" (custom: {n})"))
             } else {
                 None
             };
+            let custom = custom.unwrap_or_default();
             if pool.contains(&i) {
-                println!("\n--- Style {i}{} ---", custom.unwrap_or_default());
+                print_line(&format!("\n--- Style {i}{custom} ---"));
             } else {
-                println!("\n--- Style {i} (out of pool) ---");
+                print_line(&format!("\n--- Style {i} (out of pool){custom} ---"));
             }
             for line in get_teto_art(Some(i)) {
-                println!("{line}");
+                print_line(&line);
             }
         }
-        println!(
-            "\nUse --style <number> to select a specific style, or omit for random selection."
+        print_line(
+            "\nUse --style <number> to select a specific style, or omit for random selection.",
         );
-        println!(
+        print_line(&format!(
             "Custom arts: drop .txt files into {}.",
             user_arts_dir().display()
-        );
+        ));
         return;
     }
 
@@ -175,10 +200,7 @@ fn main() {
     };
 
     if !args.no_clear && std::io::stdout().is_terminal() {
-        print!("\x1b[2J\x1b[H");
+        write_stdout("\x1b[2J\x1b[H");
     }
-    print!(
-        "{}",
-        render_with_options(&text, style, width, args.align.into())
-    );
+    write_stdout(&render_with_options(&text, style, width, args.align.into()));
 }

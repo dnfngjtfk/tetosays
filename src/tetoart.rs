@@ -455,7 +455,10 @@ pub fn get_teto_art(style: Option<usize>) -> Vec<String> {
 }
 
 fn normalize_art(raw: &str) -> Vec<String> {
-    let mut art: Vec<String> = raw
+    // Expand tabs to 8-space stops so custom arts with tabs keep alignment
+    // (terminal renders tabs as stops, but width math counts them as 0).
+    let expanded = expand_tabs(raw);
+    let mut art: Vec<String> = expanded
         .lines()
         .map(|l| l.trim_end_matches(is_blank).to_string())
         .collect();
@@ -485,12 +488,38 @@ fn normalize_art(raw: &str) -> Vec<String> {
 
 pub fn user_arts_dir() -> std::path::PathBuf {
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
-        std::path::PathBuf::from(dir).join("tetosays/arts")
-    } else if let Some(home) = std::env::var_os("HOME") {
+        // Empty XDG_CONFIG_HOME means "unset" per spec; don't treat it
+        // as a relative path or we'd read ./tetosays/arts by accident.
+        if !dir.is_empty() {
+            return std::path::PathBuf::from(dir).join("tetosays/arts");
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
         std::path::PathBuf::from(home).join(".config/tetosays/arts")
     } else {
         std::path::PathBuf::from(".config/tetosays/arts")
     }
+}
+
+fn expand_tabs(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for line in s.split_inclusive('\n') {
+        let mut col = 0usize;
+        for c in line.chars() {
+            if c == '\t' {
+                let spaces = 8 - (col % 8);
+                out.extend(std::iter::repeat_n(' ', spaces));
+                col += spaces;
+            } else if c == '\n' {
+                out.push('\n');
+                col = 0;
+            } else {
+                out.push(c);
+                col += unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+            }
+        }
+    }
+    out
 }
 
 pub fn load_user_arts_from(dir: &std::path::Path) -> Vec<(String, Vec<String>)> {
