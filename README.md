@@ -4,7 +4,7 @@
 
 ## ~~Установка~~
 
-`yay -S tetosays` — пока нет на AUR
+~~`yay -S tetosays`~~ `paru -S tetosays` — пока нет на AUR
 
 Из исходников:
 
