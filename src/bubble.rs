@@ -120,7 +120,6 @@ pub fn get_speech_bubble_lines(text: &str, max_width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use unicode_width::UnicodeWidthStr;
 
     #[test]
     fn wrap_basic() {

@@ -410,7 +410,10 @@ pub fn random_pool_index() -> usize {
 
 pub fn get_teto_art(style: Option<usize>) -> Vec<String> {
     let index = match style {
-        Some(i) => i % art_count(),
+        Some(i) => {
+            debug_assert!(i < art_count());
+            i.min(art_count().saturating_sub(1))
+        }
         None => random_pool_index(),
     };
 

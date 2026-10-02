@@ -107,7 +107,7 @@ fn main() {
             if pool.contains(&i) {
                 println!("\n--- Style {i}{} ---", custom.unwrap_or_default());
             } else {
-                println!("\n--- Style {i} (вне пула) ---");
+                println!("\n--- Style {i} (out of pool) ---");
             }
             for line in get_teto_art(Some(i)) {
                 println!("{line}");

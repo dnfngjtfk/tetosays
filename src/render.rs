@@ -1,6 +1,6 @@
 use std::io::IsTerminal;
 use terminal_size::{terminal_size, Height, Width};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::bubble::get_speech_bubble_lines;
 use crate::tetoart::{get_teto_art, is_blank};
@@ -17,16 +17,24 @@ fn ink_center(art: &[String]) -> usize {
     let mut max_end = 0;
     let mut found = false;
     for line in art {
-        let chars: Vec<char> = line.chars().collect();
-        let (Some(s), Some(e)) = (
-            chars.iter().position(|c| !is_blank(*c)),
-            chars.iter().rposition(|c| !is_blank(*c)),
-        ) else {
-            continue;
-        };
-        found = true;
-        min_start = min_start.min(s);
-        max_end = max_end.max(e + 1);
+        let mut col = 0;
+        let mut start = None;
+        let mut end = 0;
+        for c in line.chars() {
+            let w = c.width().unwrap_or(0);
+            if !is_blank(c) {
+                if start.is_none() {
+                    start = Some(col);
+                }
+                end = col + w;
+            }
+            col += w;
+        }
+        if let Some(s) = start {
+            found = true;
+            min_start = min_start.min(s);
+            max_end = max_end.max(end);
+        }
     }
     if !found {
         return 0;
@@ -152,5 +160,11 @@ mod tests {
                 .unwrap_or(0)
         };
         assert!(leading(&right) >= leading(&center));
+    }
+
+    #[test]
+    fn ink_center_counts_columns() {
+        let art = vec!["  テト".to_string()];
+        assert_eq!(ink_center(&art), 4);
     }
 }
