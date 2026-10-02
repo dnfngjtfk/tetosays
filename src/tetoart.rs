@@ -397,8 +397,6 @@ pub fn pick_from_pool(pool: &[usize]) -> Option<usize> {
     if pool.is_empty() {
         return None;
     }
-    // subsec_nanos alone repeats every second and has poor spread, so mix in
-    // pid + a per-call counter and run splitmix64 for uniform selection.
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
@@ -455,8 +453,6 @@ pub fn get_teto_art(style: Option<usize>) -> Vec<String> {
 }
 
 fn normalize_art(raw: &str) -> Vec<String> {
-    // Expand tabs to 8-space stops so custom arts with tabs keep alignment
-    // (terminal renders tabs as stops, but width math counts them as 0).
     let expanded = expand_tabs(raw);
     let mut art: Vec<String> = expanded
         .lines()
@@ -488,8 +484,6 @@ fn normalize_art(raw: &str) -> Vec<String> {
 
 pub fn user_arts_dir() -> std::path::PathBuf {
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
-        // Empty XDG_CONFIG_HOME means "unset" per spec; don't treat it
-        // as a relative path or we'd read ./tetosays/arts by accident.
         if !dir.is_empty() {
             return std::path::PathBuf::from(dir).join("tetosays/arts");
         }
