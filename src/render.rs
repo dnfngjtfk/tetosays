@@ -2,7 +2,7 @@ use std::io::IsTerminal;
 use terminal_size::{terminal_size, Height, Width};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::bubble::get_speech_bubble_lines;
+use crate::bubble::{get_plain_text_lines, get_speech_bubble_lines, BubbleStyle};
 use crate::tetoart::{get_teto_art, is_blank};
 
 fn term_size() -> (usize, usize) {
@@ -78,10 +78,17 @@ pub enum Align {
     Right,
 }
 
-pub fn render_with_options(text: &str, style: Option<usize>, width: usize, align: Align) -> String {
+pub fn render_with_options(
+    text: &str,
+    style: Option<usize>,
+    width: usize,
+    align: Align,
+    bubble: BubbleStyle,
+    no_bubble: bool,
+) -> String {
     let (term_w, term_h) = term_size();
     let is_tty = std::io::stdout().is_terminal();
-    render_with_term(text, style, width, align, (term_w, term_h), is_tty)
+    render_with_term(text, style, width, align, bubble, no_bubble, (term_w, term_h), is_tty)
 }
 
 pub(crate) fn render_with_term(
@@ -89,6 +96,8 @@ pub(crate) fn render_with_term(
     style: Option<usize>,
     width: usize,
     align: Align,
+    bubble_style: BubbleStyle,
+    no_bubble: bool,
     term: (usize, usize),
     is_tty: bool,
 ) -> String {
@@ -100,8 +109,59 @@ pub(crate) fn render_with_term(
     } else {
         width
     };
-    let bubble = get_speech_bubble_lines(text, width);
     let art = get_teto_art(style);
+
+    if no_bubble {
+        let text_lines = get_plain_text_lines(text, width);
+        let max_content_width = text_lines
+            .iter()
+            .chain(art.iter())
+            .map(|l| visible_width(l))
+            .max()
+            .unwrap_or(0);
+        let overall_left = if !is_tty {
+            0
+        } else {
+            match align {
+                Align::Center => term_w.saturating_sub(max_content_width) / 2,
+                Align::Left => 0,
+                Align::Right => term_w.saturating_sub(max_content_width),
+            }
+        };
+        // Center the text block over the art's ink center, like the bubble.
+        let text_width = text_lines
+            .iter()
+            .map(|l| visible_width(l))
+            .max()
+            .unwrap_or(0);
+        let text_center = text_width / 2;
+        let anchor = ink_center(&art);
+        let mut text_left = (overall_left + anchor).saturating_sub(text_center);
+        if is_tty {
+            text_left = text_left.min(term_w.saturating_sub(text_width.max(1)));
+        }
+
+        let mut body = String::new();
+        for line in &text_lines {
+            // Center each line within the text block so short lines
+            // don't hug the left edge.
+            let pad = text_width.saturating_sub(visible_width(line)) / 2;
+            body.push_str(&" ".repeat(text_left + pad));
+            body.push_str(line);
+            body.push('\n');
+        }
+        for line in &art {
+            body.push_str(&" ".repeat(overall_left));
+            body.push_str(line);
+            body.push('\n');
+        }
+        if !is_tty {
+            return body;
+        }
+        return pad_vertical(body, term_h);
+    }
+
+    let bubble = get_speech_bubble_lines(text, width, bubble_style);
 
     let tails = &bubble[bubble.len().saturating_sub(2)..];
 
@@ -157,6 +217,10 @@ pub(crate) fn render_with_term(
     if !is_tty {
         return body;
     }
+    pad_vertical(body, term_h)
+}
+
+fn pad_vertical(body: String, term_h: usize) -> String {
     // Reserve one row for the shell prompt: filling exactly term_h rows
     // scrolls the terminal by one line and pushes the top off-screen.
     let avail = term_h.saturating_sub(1);
@@ -187,19 +251,40 @@ mod tests {
         style: Option<usize>,
         width: usize,
     ) -> String {
-        render_with_term(text, style, width, align, term, true)
+        render_with_term(
+            text,
+            style,
+            width,
+            align,
+            BubbleStyle::Round,
+            false,
+            term,
+            true,
+        )
+    }
+
+    fn pipe(
+        text: &str,
+        style: Option<usize>,
+        width: usize,
+        bubble: BubbleStyle,
+        no_bubble: bool,
+    ) -> String {
+        render_with_term(
+            text,
+            style,
+            width,
+            Align::Left,
+            bubble,
+            no_bubble,
+            (80, 24),
+            false,
+        )
     }
 
     #[test]
     fn render_contains_text_and_art() {
-        let out = render_with_term(
-            "hello",
-            Some(3),
-            crate::bubble::MAX_BUBBLE_WIDTH,
-            Align::Center,
-            (80, 24),
-            false,
-        );
+        let out = pipe("hello", Some(3), crate::bubble::MAX_BUBBLE_WIDTH, BubbleStyle::Round, false);
         assert!(out.contains("hello"));
         assert!(out.chars().any(|c| ('⠀'..='⣿').contains(&c)));
     }
@@ -220,20 +305,18 @@ mod tests {
 
     #[test]
     fn render_narrow_width_wraps() {
-        let wide = render_with_term(
+        let wide = pipe(
             "hello world foo bar baz qux",
             Some(3),
             60,
-            Align::Left,
-            (80, 24),
+            BubbleStyle::Round,
             false,
         );
-        let narrow = render_with_term(
+        let narrow = pipe(
             "hello world foo bar baz qux",
             Some(3),
             24,
-            Align::Left,
-            (80, 24),
+            BubbleStyle::Round,
             false,
         );
         assert!(narrow.lines().count() >= wide.lines().count());
@@ -282,5 +365,33 @@ mod tests {
         {
             assert!(visible_width(line) <= 30, "bubble line too wide: {line}");
         }
+    }
+
+    #[test]
+    fn bubble_styles_render() {
+        for bubble in [
+            BubbleStyle::Round,
+            BubbleStyle::Sharp,
+            BubbleStyle::Ascii,
+            BubbleStyle::Cowsay,
+            BubbleStyle::Think,
+        ] {
+            let out = pipe("hi", Some(3), 50, bubble, false);
+            assert!(out.contains("hi"), "{bubble:?} lost text");
+        }
+        let think = pipe("hi", Some(3), 50, BubbleStyle::Think, false);
+        assert!(think.lines().any(|l| l.trim() == "o"));
+        let cowsay = pipe("hi", Some(3), 50, BubbleStyle::Cowsay, false);
+        assert!(cowsay.contains('<') && cowsay.contains('>'));
+    }
+
+    #[test]
+    fn no_bubble_has_no_frame() {
+        let out = pipe("hello", Some(3), 50, BubbleStyle::Round, true);
+        assert!(out.contains("hello"));
+        for ch in ['╭', '╮', '╰', '╯', '│', '─', '┌', '┐', '└', '┘', '<', '>'] {
+            assert!(!out.lines().any(|l| l.contains(ch) && l.contains("hello")), "frame leak: {ch}");
+        }
+        assert!(out.chars().any(|c| ('⠀'..='⣿').contains(&c)));
     }
 }

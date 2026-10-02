@@ -5,6 +5,7 @@ mod tetoart;
 use std::io::{IsTerminal, Read};
 
 use clap::{Parser, ValueEnum};
+use bubble::BubbleStyle;
 use render::{render_with_options, Align};
 use tetoart::{
     art_count, effective_pool, get_teto_art, pick_from_pool, user_art_name, user_arts_dir,
@@ -65,6 +66,14 @@ struct Args {
     /// Horizontal alignment
     #[arg(long, value_enum, default_value_t = AlignArg::Center)]
     align: AlignArg,
+
+    /// Bubble frame style
+    #[arg(short = 'b', long = "bubble", value_enum, default_value_t = BubbleStyle::Round)]
+    bubble: BubbleStyle,
+
+    /// Print text without any bubble frame (overrides --bubble)
+    #[arg(short = 'B', long = "no-bubble")]
+    no_bubble: bool,
 }
 
 fn read_stdin() -> Option<String> {
@@ -202,5 +211,12 @@ fn main() {
     if !args.no_clear && std::io::stdout().is_terminal() {
         write_stdout("\x1b[2J\x1b[H");
     }
-    write_stdout(&render_with_options(&text, style, width, args.align.into()));
+    write_stdout(&render_with_options(
+        &text,
+        style,
+        width,
+        args.align.into(),
+        args.bubble,
+        args.no_bubble,
+    ));
 }
