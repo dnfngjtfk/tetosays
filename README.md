@@ -13,6 +13,71 @@ cd tetosays
 cargo build --release
 ```
 
+## ~~Виндовс~~
+
+### Способ 1 (рекомендуется):
+
+Подготовка:
+
+1. Скачай ISO с [archlinux.org/download](https://archlinux.org/download/).
+2. Поставь [Ventoy](https://www.ventoy.net) на флешку (она сотрётся):
+   ```powershell
+   winget install Ventoy.Ventoy
+   ```
+   Запусти Ventoy2Disk, выбери флешку, нажми Install.
+3. Скопируй `archlinux-*.iso` на флешку обычным копированием.
+4. **Сделай бэкап всего важного.** Установка на целый диск сотрёт всё, что на нём было, включая ~~виндовс~~.
+5. Зайди в BIOS/UEFI (F2, F12 или Del), отключи Secure Boot и загрузись с флешки. В меню Ventoy выбери Arch ISO.
+6. Если интернет по Wi-Fi: `iwctl`, затем `station wlan0 connect ИМЯ_СЕТИ`, затем `exit`.
+
+Установка (диск смотри через `lsblk`, ниже для `/dev/nvme0n1`, UEFI):
+
+```sh
+fdisk /dev/nvme0n1                  # p1: 1G EFI System, p2: остальное Linux
+mkfs.fat -F32 /dev/nvme0n1p1
+mkfs.ext4 /dev/nvme0n1p2
+mount /dev/nvme0n1p2 /mnt
+mount --mkdir /dev/nvme0n1p1 /mnt/boot
+pacstrap -K /mnt base linux linux-firmware networkmanager sudo nano grub efibootmgr git rust
+genfstab -U /mnt >> /mnt/etc/fstab
+arch-chroot /mnt
+
+ln -sf /usr/share/zoneinfo/Регион/Город /etc/localtime
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
+echo LANG=en_US.UTF-8 > /etc/locale.conf
+echo myarch > /etc/hostname
+passwd
+useradd -mG wheel user && passwd user
+EDITOR=nano visudo                  # раскомментируй %wheel ALL=(ALL:ALL) ALL
+systemctl enable NetworkManager
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+grub-mkconfig -o /boot/grub/grub.cfg
+exit
+reboot
+```
+
+Полный гайд: [wiki.archlinux.org/title/Installation_guide](https://wiki.archlinux.org/title/Installation_guide).
+
+После установки собери tetosays:
+
+```sh
+git clone https://github.com/dnfngjtfk/tetosays
+cd tetosays
+cargo build --release
+./target/release/tetosays привет -r --bubble ascii --bold
+```
+
+### Способ 2: ~~Windows Terminal~~ через winget (Крайне не рекомендовано)
+
+Скачай `tetosays.exe` из [релизов](https://github.com/dnfngjtfk/tetosays/releases), распакуй zip и запускай **только в ~~Windows Terminal~~**:
+
+```powershell
+winget install Microsoft.WindowsTerminal
+.\tetosays.exe привет -r --bubble ascii --bold
+```
+
+В старой консоли (cmd и PowerShell в обычном окне) брайлевский арт превратится в мусор. Это не баг, а особенность ~~винды~~.
+
 ## Использование
 
 ```sh
